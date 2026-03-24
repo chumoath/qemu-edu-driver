@@ -1,9 +1,18 @@
-obj-m := edu.o
-edu-objs := edu-driver.o
+ifneq ($(KERNELRELEASE),)
+    obj-m := edu.o
+    edu-objs := edu-driver.o
+else
+    MODULE_PATH := $(shell pwd)
+    ARCH := arm64
+    KERNEL_PATH := '/root/linux-5.10.248/build.arm64'
+    CROSS_COMPILE := aarch64-linux-gnu-
 
-edu-cli: edu-cli.c
-	$(CC) -Wall -Wextra -std=gnu11 -o $@ $<
+#edu-cli: edu-cli.c
+#	$(CC) -Wall -Wextra -std=gnu11 -o $@ $<
 
-.PHONY: clean
+all:
+	make ARCH=${ARCH} CROSS_COMPILE=${CROSS_COMPILE} -C ${KERNEL_PATH} M=${MODULE_PATH} modules
+
 clean:
-	$(RM) edu-cli *.o *.ko modules.order .modules.order.cmd Module.symvers .Module.symvers.cmd .*.ko.cmd *.mod *.mod.c .*.mod.cmd *.mod.o .*.o.cmd
+	make ARCH=${ARCH} CROSS_COMPILE=${CROSS_COMPILE} -C ${KERNEL_PATH} M=${MODULE_PATH} clean
+endif

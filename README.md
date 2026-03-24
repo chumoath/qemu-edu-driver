@@ -39,6 +39,7 @@ Alternatively, you can grep for "edu" in /proc/devices. Once you have the major/
 device numbers, you can create a device node:
 ```bash
 mknod /dev/edu c 250 0
+mknod /dev/edu c 511 0
 ```
 The device node must exist to use edu-cli (see below).
 
@@ -47,6 +48,18 @@ This repository has a CLI program called edu-cli which can be used to interact w
 the driver via an IOCTL-based interface. To build it, run
 ```bash
 make edu-cli
+aarch64-linux-gnu-gcc edu-cli.c -o edu-cli
+```
+
+## test
+```bash
+./edu-cli ident
+./edu-cli liveness 0x55
+./edu-cli factorial 4
+./edu-cli wait  &
+./edu-cli raise 0x50
+./edu-cli dma-write
+./edu-cli dma-read 7
 ```
 
 It supports the following commands:
