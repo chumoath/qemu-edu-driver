@@ -59,16 +59,17 @@ struct edu_device {
     bool registered_irq_handler;
     bool added_cdev;
     struct cdev cdev;
+    struct class *class;
+    dev_t major;
     char __iomem *iomem;
     unsigned int irq;
     u32 irq_value;
     wait_queue_head_t irq_wait_queue;
     dma_addr_t dma_bus_addr;
     void *dma_virt_addr;
+    struct pci_dev *pdev;
 };
 
-static dev_t devno;
-static const int minor = 0;
 static struct edu_device *edu_dev;
 
 static int edu_open(struct inode *inode, struct file *filp) {
@@ -227,10 +228,62 @@ struct file_operations edu_fops = {
     .mmap = edu_mmap,
 };
 
-static void edu_dev_init(struct edu_device *dev) {
-    cdev_init(&dev->cdev, &edu_fops);
-    dev->cdev.owner = THIS_MODULE;
-    init_waitqueue_head(&dev->irq_wait_queue);
+static int edu_cdev_init(void) {
+    int ret;
+    dev_t dev_id = 0, tmp;
+    struct device *dev = NULL;
+
+    ret = alloc_chrdev_region(&dev_id, 0, 1, EDU_NAME);
+    if (ret < 0) {
+        return -EFAULT;
+    }
+    edu_dev->major = MAJOR(dev_id);
+    
+    cdev_init(&edu_dev->cdev, &edu_fops);
+    edu_dev->cdev.owner = THIS_MODULE;
+    ret = cdev_add(&edu_dev->cdev, dev_id, 1);
+    if (ret < 0) {
+        goto _cdev_add_err;
+    }
+    edu_dev->class = class_create(THIS_MODULE, EDU_NAME);
+    if (IS_ERR(edu_dev->class)) {
+        ret = -ENXIO;
+        goto _class_create_err;
+    }
+
+    tmp = MKDEV(edu_dev->major, 0);
+    dev = device_create(edu_dev->class, NULL, tmp, NULL, EDU_NAME);
+    if (IS_ERR(dev)) {
+        ret = -EIO;
+        goto _device_create_err;
+    }
+
+    edu_dev->added_cdev = true;
+
+    return 0;
+
+_device_create_err:
+    class_destroy(edu_dev->class);
+_class_create_err:
+    cdev_del(&edu_dev->cdev);
+_cdev_add_err:
+    unregister_chrdev_region(dev_id, 1);
+
+    return ret;
+}
+
+static void edu_cdev_cleanup(void) {
+    if (!edu_dev) {
+        return;
+    }
+
+    if (edu_dev->added_cdev) {
+        device_destroy(edu_dev->class, MKDEV(edu_dev->major, 0));
+        class_destroy(edu_dev->class);
+        cdev_del(&edu_dev->cdev);
+        unregister_chrdev_region(MKDEV(edu_dev->major, 0), 1);
+        edu_dev->added_cdev = false;
+    }
 }
 
 static irqreturn_t edu_irq_handler(int irq, void *dev_id) {
@@ -248,14 +301,11 @@ static irqreturn_t edu_irq_handler(int irq, void *dev_id) {
     return IRQ_HANDLED;
 }
 
-static void edu_pci_cleanup(struct pci_dev *pdev) {
+static void edu_driver_cleanup(struct pci_dev *pdev) {
     if (!edu_dev) {
         return;
     }
-    if (edu_dev->added_cdev) {
-        cdev_del(&edu_dev->cdev);
-        edu_dev->added_cdev = false;
-    }
+
     if (edu_dev->registered_irq_handler) {
         free_irq(edu_dev->irq, edu_dev);
         edu_dev->registered_irq_handler = false;
@@ -265,7 +315,7 @@ static void edu_pci_cleanup(struct pci_dev *pdev) {
     }
 }
 
-static int edu_pci_probe(struct pci_dev *pdev, const struct pci_device_id *ent) {
+static int edu_driver_init(struct pci_dev *pdev) {
     int err;
     int nvec;
 
@@ -319,23 +369,24 @@ static int edu_pci_probe(struct pci_dev *pdev, const struct pci_device_id *ent) 
         goto fail;
     }
     edu_dev->registered_irq_handler = true;
-
-    // add char device
-    err = cdev_add(&edu_dev->cdev, devno, 1);
-    if (err) {
-        goto fail;
-    }
-    edu_dev->added_cdev = true;
+    init_waitqueue_head(&edu_dev->irq_wait_queue);
 
     return 0;
 fail:
-    edu_pci_cleanup(pdev);
+    edu_driver_cleanup(pdev);
+    return err;
+}
+
+static int edu_pci_probe(struct pci_dev *pdev, const struct pci_device_id *ent) {
+    int err;
+
+    err = edu_driver_init(pdev);
     return err;
 }
 
 static void edu_pci_remove(struct pci_dev *pdev) {
     pr_info("removing\n");
-    edu_pci_cleanup(pdev);
+    edu_driver_cleanup(pdev);
 }
 
 static struct pci_driver edu_pci_driver = {
@@ -345,38 +396,21 @@ static struct pci_driver edu_pci_driver = {
     .remove = edu_pci_remove,
 };
 
-static void edu_driver_cleanup(void) {
-    if (edu_dev) {
-        kfree(edu_dev);
-        edu_dev = NULL;
-    }
-    if (devno) {
-        unregister_chrdev_region(devno, 1);
-        devno = 0;
-    }
-}
-
 // Uncomment __init if you don't need to debug this function in gdb
 static int /* __init */ edu_init(void) {
     int err;
-
-    // allocate device number
-    err = alloc_chrdev_region(&devno, minor, 1, KBUILD_MODNAME);
-    if (err) {
-        return err;
-    }
-    // You can also get the major number by checking /proc/devices
-    pr_alert("device number is %d:%d\n", MAJOR(devno), minor);
-    // Now from userspace you can run e.g.
-    // mknod /dev/edu c 250 0
 
     // initialize driver state
     edu_dev = kzalloc(sizeof(*edu_dev), GFP_KERNEL);
     if (!edu_dev) {
         err = -ENOMEM;
+        return err;
+    }
+
+    err = edu_cdev_init();
+    if (err < 0) {
         goto fail;
     }
-    edu_dev_init(edu_dev);
 
     err = pci_register_driver(&edu_pci_driver);
     if (err) {
@@ -385,14 +419,15 @@ static int /* __init */ edu_init(void) {
     return 0;
 
 fail:
-    edu_driver_cleanup();
+    kfree(edu_dev);
+    edu_cdev_cleanup();
     return err;
 }
 
 // Uncomment __exit if you don't need to debug this function in gdb
 static void /* __exit */ edu_exit(void) {
     pci_unregister_driver(&edu_pci_driver);
-    edu_driver_cleanup();
+    edu_cdev_cleanup();
 }
 
 module_init(edu_init);

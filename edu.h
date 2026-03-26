@@ -6,6 +6,7 @@
 
 #include <asm/types.h>
 
+#define EDU_NAME       "edu"
 #define EDU_IOCTL_BASE 'e'
 
 #define EDU_IOCTL_IDENT           _IOR(EDU_IOCTL_BASE, 1, __u32)
