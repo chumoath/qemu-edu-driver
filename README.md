@@ -48,7 +48,7 @@ This repository has a CLI program called edu-cli which can be used to interact w
 the driver via an IOCTL-based interface. To build it, run
 ```bash
 make edu-cli
-aarch64-linux-gnu-gcc edu-cli.c -o edu-cli
+aarch64-linux-gnu-gcc -static edu-cli.c -o edu-cli
 ```
 
 ## test
