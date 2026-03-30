@@ -15,10 +15,18 @@ function run_qemu()
 	# qemu-xhci: CONFIG_USB_XHCI_HCD CONFIG_USB_XHCI_PCI
 	qemu-system-aarch64 -M virt,gic-version=3 -m 16G -cpu cortex-a72 -smp 4 \
 	  -kernel Image -append "console=ttyAMA0 nokaslr root=/dev/vda rw video=Virtual-1:1920x1080@60me" \
-	  -device e1000e,netdev=tap0 -netdev tap,id=tap0,ifname=tap0,script=no,downscript=no \
-	  -monitor none -drive format=raw,file=ubuntu22_arm64.img \
-	  -device virtio-gpu-pci -device qemu-xhci -device usb-mouse -device usb-kbd -device usb-tablet \
-	  -serial telnet::55555,server,nowait,nodelay -device edu,dma_mask=0xffffffffffffffff -s
+	  -device pcie-root-port,bus=pcie.0,id=seat1,addr=1.0,chassis=1,slot=0 \
+	  -device pcie-root-port,bus=pcie.0,id=seat2,addr=2.0,chassis=2,slot=0 \
+	  -device pcie-root-port,bus=pcie.0,id=seat3,addr=3.0,chassis=3,slot=0 \
+	  -device pcie-root-port,bus=pcie.0,id=seat4,addr=4.0,chassis=4,slot=0 \
+	  -device pcie-root-port,bus=pcie.0,id=seat0,addr=5.0,chassis=5,slot=0 \
+	  -device virtio-gpu-pci,bus=seat0 \
+	  -device qemu-xhci,bus=seat1 \
+	  -device edu,dma_mask=0xffffffffffffffff,bus=seat2 \
+	  -device e1000e,netdev=tap0,bus=seat3 -netdev tap,id=tap0,ifname=tap0,script=no,downscript=no \
+	  -device virtio-blk-pci,drive=rootfs,bus=seat4 -blockdev driver=file,node-name=rootfs,filename=ubuntu22_arm64.img \
+	  -device usb-mouse -device usb-kbd -device usb-tablet \
+	  -monitor none -serial stdio -s
 }
 
 net_config
