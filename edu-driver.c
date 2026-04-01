@@ -63,6 +63,7 @@ struct edu_device {
     dev_t major;
     char __iomem *iomem;
     unsigned int irq;
+    unsigned int irq2;
     u32 irq_value;
     wait_queue_head_t irq_wait_queue;
     dma_addr_t dma_bus_addr;
@@ -308,6 +309,9 @@ static void edu_driver_cleanup(struct pci_dev *pdev) {
 
     if (edu_dev->registered_irq_handler) {
         free_irq(edu_dev->irq, edu_dev);
+        if (edu_dev->irq2) {
+            free_irq(edu_dev->irq2, edu_dev);
+        }
         edu_dev->registered_irq_handler = false;
     }
     if (pci_dev_msi_enabled(pdev)) {
@@ -353,20 +357,27 @@ static int edu_driver_init(struct pci_dev *pdev) {
 
     if (param_msi) {
         // Fall back to INTx if MSI isn't available
-        nvec = pci_alloc_irq_vectors(pdev, 1, 1, PCI_IRQ_ALL_TYPES);
+        nvec = pci_alloc_irq_vectors(pdev, 4, 4, PCI_IRQ_ALL_TYPES);
         if (nvec < 0) {
             err = nvec;
             goto fail;
         }
-        edu_dev->irq = pci_irq_vector(pdev, 0);
+        edu_dev->irq = pci_irq_vector(pdev, 1);
+        edu_dev->irq2 = pci_irq_vector(pdev, 3);
     } else {
         edu_dev->irq = pdev->irq;
     }
-    edu_log("irq = %u\n", edu_dev->irq);
+    edu_log("irq = %u, irq2 = %u\n", edu_dev->irq, edu_dev->irq2);
     // need IRQF_SHARED because all (legacy) PCI IRQ lines can be shared
     err = request_irq(edu_dev->irq, edu_irq_handler, IRQF_SHARED, KBUILD_MODNAME, edu_dev);
     if (err) {
         goto fail;
+    }
+    if (edu_dev->irq2) {
+        err = request_irq(edu_dev->irq2, edu_irq_handler, IRQF_SHARED, KBUILD_MODNAME, edu_dev);
+        if (err) {
+            goto fail;
+        }
     }
     edu_dev->registered_irq_handler = true;
     init_waitqueue_head(&edu_dev->irq_wait_queue);

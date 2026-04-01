@@ -13,6 +13,7 @@ function net_config()
 function run_qemu()
 {
 	# qemu-xhci: CONFIG_USB_XHCI_HCD CONFIG_USB_XHCI_PCI
+	#gdbserver :2345 qemu-system-aarch64 -M virt,gic-version=3 -m 16G -cpu cortex-a72 -smp 4 \
 	qemu-system-aarch64 -M virt,gic-version=3 -m 16G -cpu cortex-a72 -smp 4 \
 	  -kernel Image -append "console=ttyAMA0 nokaslr root=/dev/vda rw video=Virtual-1:1920x1080@60me" \
 	  -device pcie-root-port,bus=pcie.0,id=seat1,addr=1.0,chassis=1,slot=0 \
