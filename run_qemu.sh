@@ -13,6 +13,7 @@ function net_config()
 function run_qemu()
 {
 	# qemu-xhci: CONFIG_USB_XHCI_HCD CONFIG_USB_XHCI_PCI
+	# minicom -D /dev/pts/11
 	#gdbserver :2345 qemu-system-aarch64 -M virt,gic-version=3 -m 16G -cpu cortex-a72 -smp 4 \
 	qemu-system-aarch64 -M virt,gic-version=3 -m 16G -cpu cortex-a72 -smp 4 \
 	  -kernel Image -append "console=ttyAMA0 nokaslr root=/dev/vda rw video=Virtual-1:1920x1080@60me" \
@@ -26,7 +27,7 @@ function run_qemu()
 	  -device edu,dma_mask=0xffffffffffffffff,bus=seat2 \
 	  -device e1000e,netdev=tap0,bus=seat3 -netdev tap,id=tap0,ifname=tap0,script=no,downscript=no \
 	  -device virtio-blk-pci,drive=rootfs,bus=seat4 -blockdev driver=file,node-name=rootfs,filename=ubuntu22_arm64.img \
-	  -device usb-mouse -device usb-kbd -device usb-tablet \
+	  -device usb-mouse -device usb-kbd -device usb-tablet  -chardev pty,id=pty_serial -device usb-serial,chardev=pty_serial \
 	  -monitor none -serial stdio -s
 }
 
